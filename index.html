@@ -508,12 +508,48 @@ footer {
   color: var(--yellow); text-align: center;
 }
 
+/* ─── GROUPED COMPANY ROWS ────────────────────────────────────────────────── */
+.company-header-row {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  transition: background .1s;
+  animation: rowIn .2s ease both;
+}
+.company-header-row:hover { background: var(--surface2); }
+.company-header-row td { padding: 12px 14px; vertical-align: middle; }
+
+.expand-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: none; border: 1px solid var(--border);
+  color: var(--text3); cursor: pointer;
+  padding: 3px 9px; border-radius: 20px;
+  font-family: var(--mono); font-size: 10px;
+  transition: border-color .15s, color .15s;
+  white-space: nowrap;
+}
+.expand-btn:hover { border-color: var(--border2); color: var(--text2); }
+.expand-btn.open  { border-color: var(--accent); color: var(--accent); background: rgba(255,60,60,.06); }
+.expand-chevron { display: inline-block; transition: transform .2s ease; font-style: normal; }
+.expand-btn.open .expand-chevron { transform: rotate(180deg); }
+
+.company-badges { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 5px; }
+.header-impact  { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+
+.incident-subrow { display: none; border-bottom: 1px solid var(--border); background: var(--surface2); }
+.incident-subrow.visible { display: table-row; animation: rowIn .15s ease both; }
+.incident-subrow td { padding: 9px 14px 9px 28px; vertical-align: top; font-size: 12px; }
+.incident-subrow td:first-child { border-left: 3px solid var(--accent); }
+.incident-num { font-family: var(--mono); font-size: 9px; color: var(--text3); margin-bottom: 3px; }
+
 /* ─── MOBILE CARD LAYOUT ──────────────────────────────────────────────────── */
 @media (max-width: 767px) {
   /* Kill the table layout entirely */
   thead { display: none; }
   table, tbody { display: block; width: 100%; }
   .table-wrap { overflow-x: visible; }
+  /* Sub-rows become visible block elements on mobile */
+  .incident-subrow { display: none !important; }
+  .incident-subrow.visible { display: block !important; border-left: 3px solid var(--accent); border-radius: 0 0 6px 6px; margin-top: -6px; padding-top: 0; }
 
   /* Each row = card */
   tbody tr {
@@ -870,47 +906,137 @@ function sortData() {
   });
 }
 
-// ─── RENDER ───────────────────────────────────────────────────────────────────
+// ─── RENDER — GROUPED BY COMPANY ─────────────────────────────────────────────
 function renderTable() {
   const tbody = document.getElementById('tableBody');
   const empty = document.getElementById('emptyState');
-  document.getElementById('resultCount').textContent =
-    `Showing ${filtered.length} of ${allData.length} companies`;
 
-  if (!filtered.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  if (!filtered.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    document.getElementById('resultCount').textContent = '0 results';
+    return;
+  }
   empty.style.display = 'none';
 
-  tbody.innerHTML = filtered.map((c, i) => {
-    const tags = (c.issue_tags || []).slice(0, 5)
-      .map(t => `<span class="issue-tag-pill">${TAG_LABELS[t] || t}</span>`)
-      .join('');
-    const dots = [1,2,3,4,5].map(n =>
-      `<div class="impact-dot${n <= c.impact ? ' filled' + (c.impact === 5 ? ' severe' : '') : ''}"></div>`
+  // Group incidents by company name (case-insensitive)
+  const groups = new Map();
+  filtered.forEach(c => {
+    const key = c.company.trim().toLowerCase();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+  });
+
+  // Sort groups: by max impact desc, then company name asc
+  const sortedGroups = [...groups.entries()].sort((a, b) => {
+    const aMax = Math.max(...a[1].map(x => x.impact || 0));
+    const bMax = Math.max(...b[1].map(x => x.impact || 0));
+    if (sortCol === 'company') {
+      return sortDir * a[0].localeCompare(b[0]);
+    } else if (sortCol === 'date') {
+      const aDate = a[1].map(x => x.date || '').sort().reverse()[0];
+      const bDate = b[1].map(x => x.date || '').sort().reverse()[0];
+      return sortDir === 1 ? aDate.localeCompare(bDate) : bDate.localeCompare(aDate);
+    } else {
+      // impact (default)
+      if (bMax !== aMax) return bMax - aMax;
+      return a[0].localeCompare(b[0]);
+    }
+  });
+
+  document.getElementById('resultCount').textContent =
+    `Showing ${sortedGroups.length} companies · ${filtered.length} incidents`;
+
+  let html = '';
+  sortedGroups.forEach(([key, incidents], gi) => {
+    const rep = incidents[0]; // representative (highest impact)
+    const maxImpact = Math.max(...incidents.map(x => x.impact || 0));
+    const multipleIncidents = incidents.length > 1;
+
+    // Collect unique categories & all issue tags
+    const cats = [...new Set(incidents.map(x => x.category).filter(Boolean))];
+    const allTags = [...new Set(incidents.flatMap(x => x.issue_tags || []))].slice(0, 6);
+    const groupId = `grp-${gi}`;
+
+    const tagPills = allTags.map(t =>
+      `<span class="issue-tag-pill">${TAG_LABELS[t] || t}</span>`
     ).join('');
 
-    return `
-    <tr style="animation-delay:${Math.min(i * .015, .4)}s">
-      <td data-label="Company">
-        <div class="company-name">${esc(c.company)}</div>
-        <div class="company-sector">${esc(c.sector || '')}</div>
-        ${tags ? `<div class="issue-tags">${tags}</div>` : ''}
+    const catBadges = cats.map(cat => badge(cat)).join(' ');
+
+    const dots = [1,2,3,4,5].map(n =>
+      `<div class="impact-dot${n <= maxImpact ? ' filled' + (maxImpact === 5 ? ' severe' : '') : ''}"></div>`
+    ).join('');
+
+    // Most recent date across all incidents
+    const latestDate = incidents.map(x => x.date || '').sort().reverse()[0];
+
+    // Header row — always visible
+    html += `
+    <tr class="company-header-row" style="animation-delay:${Math.min(gi*.02,.4)}s"
+        onclick="toggleGroup('${groupId}')">
+      <td data-label="Company" colspan="2">
+        <div class="company-name">${esc(rep.company)}</div>
+        <div class="company-sector">${esc(rep.sector || '')}</div>
+        <div class="company-badges">${catBadges}</div>
+        ${tagPills ? `<div class="issue-tags" style="margin-top:5px">${tagPills}</div>` : ''}
       </td>
-      <td data-label="Date" class="date-cell">${fmtDate(c.date)}</td>
-      <td data-label="Category">${badge(c.category)}</td>
-      <td data-label="Type">${incTag(c.incident_type)}</td>
-      <td data-label="Reason / Incident" class="reason-cell">${esc(c.reason || '')}</td>
+      <td data-label="Latest" class="date-cell" style="white-space:nowrap">
+        ${fmtDate(latestDate)}
+      </td>
       <td data-label="Impact" class="impact-cell">
-        <div class="impact-dots">${dots}<span class="impact-score">${c.impact}/5</span></div>
+        <div class="header-impact">
+          <div class="impact-dots">${dots}<span class="impact-score">${maxImpact}/5</span></div>
+        </div>
       </td>
-      <td data-label="Source">
-        <a href="${esc(c.source || '#')}" target="_blank" rel="noopener noreferrer"
-           class="source-link" title="${esc(c.source || '')}">
-          ${esc(c.source_label || 'Source')}
-        </a>
+      <td data-label="Incidents" style="text-align:right">
+        <button class="expand-btn" id="btn-${groupId}" onclick="event.stopPropagation();toggleGroup('${groupId}')">
+          ${multipleIncidents ? incidents.length + ' incidents' : '1 incident'}
+          <span class="expand-chevron">▾</span>
+        </button>
       </td>
     </tr>`;
-  }).join('');
+
+    // Sub-rows — one per incident, hidden by default
+    incidents.forEach((inc, ii) => {
+      const subDots = [1,2,3,4,5].map(n =>
+        `<div class="impact-dot${n <= inc.impact ? ' filled' + (inc.impact === 5 ? ' severe' : '') : ''}"></div>`
+      ).join('');
+
+      html += `
+      <tr class="incident-subrow" id="sub-${groupId}-${ii}" data-group="${groupId}">
+        <td data-label="Incident" colspan="2">
+          <div class="incident-num">Incident ${ii + 1} of ${incidents.length}</div>
+          ${incTag(inc.incident_type)}
+          <div style="margin-top:5px;color:var(--text2);font-size:12px;line-height:1.5">${esc(inc.reason || '')}</div>
+        </td>
+        <td data-label="Date" class="date-cell">${fmtDate(inc.date)}</td>
+        <td data-label="Impact" class="impact-cell">
+          <div class="impact-dots">${subDots}<span class="impact-score">${inc.impact}/5</span></div>
+        </td>
+        <td data-label="Source">
+          <a href="${esc(inc.source || '#')}" target="_blank" rel="noopener noreferrer"
+             class="source-link" title="${esc(inc.source || '')}">
+            ${esc(inc.source_label || 'Source')}
+          </a>
+        </td>
+      </tr>`;
+    });
+  });
+
+  tbody.innerHTML = html;
 }
+
+// ─── TOGGLE GROUP ─────────────────────────────────────────────────────────────
+function toggleGroup(groupId) {
+  const btn = document.getElementById('btn-' + groupId);
+  const subrows = document.querySelectorAll(`[data-group="${groupId}"]`);
+  const isOpen = btn && btn.classList.contains('open');
+
+  if (btn) btn.classList.toggle('open', !isOpen);
+  subrows.forEach(row => row.classList.toggle('visible', !isOpen));
+}
+
 
 // ─── STATS ────────────────────────────────────────────────────────────────────
 function updateStats() {
