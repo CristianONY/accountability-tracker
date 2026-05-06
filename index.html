@@ -685,13 +685,10 @@ footer {
     <table role="grid" aria-label="Corporate accountability data">
       <thead>
         <tr>
-          <th onclick="sortBy('company')" id="th-company">Company <span class="sort-arrow">&#x2195;</span></th>
-          <th onclick="sortBy('date')" id="th-date">Date <span class="sort-arrow">&#x2195;</span></th>
-          <th>Category</th>
-          <th>Type</th>
-          <th>Reason / Incident</th>
-          <th onclick="sortBy('impact')" id="th-impact">Impact <span class="sort-arrow">&#x2195;</span></th>
-          <th>Source</th>
+          <th colspan="2" onclick="sortBy('company')" id="th-company" style="width:40%">Company &amp; Incidents <span class="sort-arrow">&#x2195;</span></th>
+          <th onclick="sortBy('date')" id="th-date" style="width:14%">Latest Date <span class="sort-arrow">&#x2195;</span></th>
+          <th onclick="sortBy('impact')" id="th-impact" style="width:16%">Max Impact <span class="sort-arrow">&#x2195;</span></th>
+          <th style="width:16%; text-align:right">Expand</th>
         </tr>
       </thead>
       <tbody id="tableBody"></tbody>
