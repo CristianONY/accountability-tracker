@@ -10,6 +10,83 @@ const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY;
 
 const SEARCH_TOPICS = [
 
+  // ── NEWSWEEK CONFIRMED TRUMP DONORS — SPECIFIC COMPANIES WITH AMOUNTS ────────
+  {
+    label: "Newsweek Confirmed Donors — Elon Musk Tesla SpaceX X xAI",
+    query: "Elon Musk $290 million Trump donation Tesla SpaceX X xAI DOGE corporate accountability federal contracts",
+    issue_tags: ["trump-financial", "federal-contracts", "surveillance-tech"]
+  },
+  {
+    label: "Newsweek Confirmed Donors — Andreessen Horowitz a16z $7M",
+    query: "Andreessen Horowitz a16z $7 million Trump donation portfolio companies deregulation crypto lobbying",
+    issue_tags: ["trump-financial", "lobbying", "financial-deregulation"]
+  },
+  {
+    label: "Newsweek Confirmed Donors — Cantor Fitzgerald $11M",
+    query: "Cantor Fitzgerald $11 million Trump donation financial services lobbying deregulation benefit",
+    issue_tags: ["trump-financial", "financial-deregulation"]
+  },
+  {
+    label: "Newsweek Confirmed Donors — Uline $10M British American Tobacco $10M",
+    query: "Uline $10 million Trump donation British American Tobacco $10 million Trump donation corporate benefit",
+    issue_tags: ["trump-financial"]
+  },
+  {
+    label: "Newsweek Confirmed Donors — Elliott Management $7M",
+    query: "Elliott Management $7 million Trump donation hedge fund corporate benefit deregulation",
+    issue_tags: ["trump-financial", "financial-deregulation", "wealth-extraction"]
+  },
+  {
+    label: "Newsweek Confirmed Donors — Jimmy Johns Liautaud $3.1M",
+    query: "Jimmy Johns Jimmy John Liautaud $3.1 million Trump donation labor violations worker pay",
+    issue_tags: ["trump-financial", "labor"]
+  },
+  {
+    label: "Newsweek Confirmed Donors — Coinbase Kraken Galaxy Digital Crypto $1M each",
+    query: "Coinbase Kraken Galaxy Digital Holdings Crypto.com Paradigm Operations $1 million Trump inauguration crypto deregulation benefit",
+    issue_tags: ["trump-financial", "financial-deregulation"]
+  },
+  {
+    label: "Newsweek Confirmed Donors — Qualcomm AT&T Verizon Comcast $1M each",
+    query: "Qualcomm AT&T Verizon Comcast $1 million Trump inauguration donation telecom deregulation FCC benefit",
+    issue_tags: ["trump-financial", "financial-deregulation", "lobbying"]
+  },
+  {
+    label: "Newsweek Confirmed Donors — Johnson & Johnson Bayer Abbott $500K-$1M",
+    query: "Johnson Johnson Bayer Abbott Laboratories HCA Healthcare Trump inauguration donation pharma deregulation FDA benefit",
+    issue_tags: ["trump-financial", "healthcare", "financial-deregulation"]
+  },
+  {
+    label: "Newsweek Confirmed Donors — OpenAI $1M Boeing $1M Intuit $1M",
+    query: "OpenAI $1 million Boeing $1 million Intuit $1 million Trump inauguration donation federal contracts benefit",
+    issue_tags: ["trump-financial", "federal-contracts"]
+  },
+  {
+    label: "Newsweek Confirmed Donors — Altria PayPal Coca-Cola Instacart Syngenta",
+    query: "Altria $1 million PayPal $250K Coca-Cola $250K Instacart $100K Syngenta $250K Trump inauguration donation corporate benefit",
+    issue_tags: ["trump-financial"]
+  },
+  {
+    label: "Newsweek Confirmed Donors — Robinhood Intercontinental Exchange Penske",
+    query: "Robinhood Markets $2 million Intercontinental Exchange Jeff Sprecher $4.9 million Roger Penske $1.1 million Trump donation benefit",
+    issue_tags: ["trump-financial", "financial-deregulation"]
+  },
+  {
+    label: "Newsweek Confirmed Donors — Home Depot Bernard Marcus $2.7M",
+    query: "Home Depot Bernard Marcus $2.7 million Trump donation anti-union labor practices",
+    issue_tags: ["trump-financial", "labor", "union-busting"]
+  },
+  {
+    label: "Newsweek Confirmed Donors — GEO Group CoreCivic $500K each ICE detention",
+    query: "GEO Group $500K CoreCivic $500K Trump inauguration donation ICE detention private prison expansion deportation profit",
+    issue_tags: ["trump-financial", "ice", "detention"]
+  },
+  {
+    label: "Newsweek Confirmed Donors — Elevance Health HCA Healthcare insurance",
+    query: "Elevance Health $150K HCA Healthcare $250K Trump donation health insurance Medicaid privatization benefit",
+    issue_tags: ["trump-financial", "healthcare", "wealth-extraction"]
+  },
+
   // ── TRUMP FAMILY PERSONAL ENRICHMENT ─────────────────────────────────────────
   {
     label: "Trump Family — Kushner Saudi $2B Deal",
@@ -711,9 +788,35 @@ async function getExistingKeys() {
   );
   if (!res.ok) throw new Error(`Supabase fetch error: ${res.status}`);
   const rows = await res.json();
-  return new Set(rows.map(r =>
-    `${(r.company || '').toLowerCase().trim()}|${r.date}|${r.incident_type}`
-  ));
+  const keys = new Set();
+  rows.forEach(r => {
+    const co   = (r.company || '').toLowerCase().trim();
+    const dt   = r.date || '';
+    const type = r.incident_type || '';
+    const mo   = dt.slice(0, 7);
+    keys.add(`${co}|${dt}|${type}`);
+    keys.add(`${co}|${mo}|${type}`);
+    keys.add(`${co}|${type}`);
+  });
+  return keys;
+}
+
+function isDupe(inc, keys) {
+  const co   = inc.company.toLowerCase().trim();
+  const dt   = inc.date || '';
+  const type = inc.incident_type || '';
+  const mo   = dt.slice(0, 7);
+  return keys.has(`${co}|${dt}|${type}`) || keys.has(`${co}|${mo}|${type}`) || keys.has(`${co}|${type}`);
+}
+
+function addKeys(inc, keys) {
+  const co   = inc.company.toLowerCase().trim();
+  const dt   = inc.date || '';
+  const type = inc.incident_type || '';
+  const mo   = dt.slice(0, 7);
+  keys.add(`${co}|${dt}|${type}`);
+  keys.add(`${co}|${mo}|${type}`);
+  keys.add(`${co}|${type}`);
 }
 
 async function writeToSupabase(incidents) {
@@ -744,10 +847,9 @@ async function searchPeriod(fromDate, toDate, existingKeys, skipDedup = false) {
     for (const inc of found) {
       const cleaned = validateIncident(inc);
       if (!cleaned) continue;
-      const key = `${cleaned.company.toLowerCase().trim()}|${cleaned.date}|${cleaned.incident_type}`;
-      if (!skipDedup && existingKeys.has(key)) continue;
+      if (!skipDedup && isDupe(cleaned, existingKeys)) continue;
       newIncidents.push(cleaned);
-      existingKeys.add(key);
+      addKeys(cleaned, existingKeys);
     }
     await new Promise(r => setTimeout(r, 1000));
   }
